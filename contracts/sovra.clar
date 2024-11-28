@@ -7,6 +7,10 @@
 (define-constant ERR-ALREADY-VOTED (err u103))
 (define-constant ERR-PROPOSAL-ENDED (err u104))
 (define-constant ERR-INSUFFICIENT-BALANCE (err u105))
+(define-constant ERR-INVALID-TITLE (err u106))
+(define-constant ERR-INVALID-DESCRIPTION (err u107))
+(define-constant ERR-INVALID-AMOUNT (err u108))
+(define-constant ERR-INVALID-RECIPIENT (err u109))
 
 ;; Data Variables
 (define-data-var min-proposal-amount uint u100000000) ;; 100 STX minimum
@@ -60,6 +64,23 @@
     (map-get? delegate-info {delegator: delegator})
 )
 
+;; Helper functions
+(define-private (is-valid-title (title (string-utf8 256)))
+    (and (>= (len title) u1) (<= (len title) u256))
+)
+
+(define-private (is-valid-description (description (string-utf8 1024)))
+    (and (>= (len description) u1) (<= (len description) u1024))
+)
+
+(define-private (is-valid-amount (amount uint))
+    (> amount u0)
+)
+
+(define-private (is-valid-recipient (recipient principal))
+    (not (is-eq recipient (as-contract tx-sender)))
+)
+
 ;; Public functions
 (define-public (create-proposal (title (string-utf8 256)) (description (string-utf8 1024)) (amount uint) (recipient principal))
     (let
@@ -69,6 +90,10 @@
             (end-block (+ block-height (var-get voting-period)))
         )
         (asserts! (>= (stx-get-balance tx-sender) (var-get min-proposal-amount)) ERR-INSUFFICIENT-BALANCE)
+        (asserts! (is-valid-title title) ERR-INVALID-TITLE)
+        (asserts! (is-valid-description description) ERR-INVALID-DESCRIPTION)
+        (asserts! (is-valid-amount amount) ERR-INVALID-AMOUNT)
+        (asserts! (is-valid-recipient recipient) ERR-INVALID-RECIPIENT)
         (map-set proposals
             {proposal-id: proposal-id}
             {
@@ -126,6 +151,7 @@
 
 (define-public (delegate (delegate-to principal))
     (begin
+        (asserts! (not (is-eq delegate-to tx-sender)) ERR-NOT-AUTHORIZED)
         (map-set delegate-info
             {delegator: tx-sender}
             {delegate: delegate-to}

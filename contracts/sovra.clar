@@ -1,5 +1,4 @@
 ;; Sovra DAO Governance Contract
-;; Version: 1.0.0
 
 ;; Constants
 (define-constant ERR-NOT-AUTHORIZED (err u100))
@@ -94,15 +93,22 @@
     (let
         (
             (proposal (unwrap! (get-proposal proposal-id) ERR-PROPOSAL-NOT-FOUND))
-            (voter (default-to tx-sender (get-delegate-or-self tx-sender)))
+            (voter tx-sender)
         )
         (asserts! (>= (stx-get-balance voter) amount) ERR-INSUFFICIENT-BALANCE)
         (asserts! (is-none (get-vote proposal-id voter)) ERR-ALREADY-VOTED)
         (asserts! (<= block-height (get end-block proposal)) ERR-PROPOSAL-ENDED)
         
-        (map-set votes
-            {proposal-id: proposal-id, voter: voter}
-            {amount: amount, support: support}
+        ;; Check if the voter has delegated their vote
+        (match (get-delegate voter)
+            delegation (map-set votes
+                {proposal-id: proposal-id, voter: (get delegate delegation)}
+                {amount: amount, support: support}
+            )
+            (map-set votes
+                {proposal-id: proposal-id, voter: voter}
+                {amount: amount, support: support}
+            )
         )
         
         (map-set proposals
@@ -145,13 +151,5 @@
             (merge proposal {executed: true})
         )
         (ok true)
-    )
-)
-
-;; Helper functions
-(define-private (get-delegate-or-self (user principal))
-    (match (get-delegate user)
-        delegate (some (get delegate delegate))
-        none (some user)
     )
 )

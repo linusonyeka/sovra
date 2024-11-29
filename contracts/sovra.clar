@@ -19,6 +19,7 @@
 (define-constant ERR-PROPOSAL-ALREADY-EXECUTED (err u115))
 (define-constant ERR-DELEGATE-TO-SELF (err u116))
 (define-constant ERR-INVALID-QUORUM (err u117))
+(define-constant ERR-INVALID-METADATA (err u118))
 
 ;; Data Variables with Admin Controls
 (define-data-var contract-owner principal tx-sender)
@@ -213,6 +214,13 @@
     (not (is-eq recipient (as-contract tx-sender)))
 )
 
+(define-private (is-valid-metadata (metadata (optional (string-utf8 1024))))
+    (match metadata
+        value (and (>= (len value) u1) (<= (len value) u1024))
+        true
+    )
+)
+
 ;; Enhanced Public Functions
 (define-public (create-proposal (title (string-utf8 256)) 
                               (description (string-utf8 1024)) 
@@ -228,6 +236,7 @@
         (asserts! (is-authorized-proposer tx-sender) ERR-NOT-AUTHORIZED)
         (asserts! (validate-proposal-params title description amount recipient) ERR-INVALID-AMOUNT)
         (asserts! (<= execution-delay (var-get max-voting-delay)) ERR-INVALID-AMOUNT)
+        (asserts! (is-valid-metadata metadata) ERR-INVALID-METADATA)
         
         (map-set proposals
             {proposal-id: proposal-id}
@@ -257,6 +266,7 @@
 (define-public (set-contract-owner (new-owner principal))
     (begin
         (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
+        (asserts! (is-valid-recipient new-owner) ERR-INVALID-RECIPIENT)
         (ok (var-set contract-owner new-owner))
     )
 )
@@ -268,6 +278,8 @@
     (begin
         (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
         (asserts! (> new-quorum u0) ERR-INVALID-QUORUM)
+        (asserts! (> new-min-proposal-amount u0) ERR-INVALID-AMOUNT)
+        (asserts! (> new-voting-period u0) ERR-INVALID-AMOUNT)
         (var-set min-proposal-amount new-min-proposal-amount)
         (var-set voting-period new-voting-period)
         (var-set quorum new-quorum)
@@ -279,19 +291,5 @@
     (begin
         (asserts! (is-contract-owner) ERR-NOT-AUTHORIZED)
         (ok (var-set proposal-submission-enabled enabled))
-    )
-)
-
-(define-public (cancel-proposal (proposal-id uint))
-    (match (map-get? proposals {proposal-id: proposal-id})
-        proposal (begin
-            (asserts! (or (is-contract-owner) (is-eq tx-sender (get creator proposal))) ERR-NOT-AUTHORIZED)
-            (asserts! (not (get executed proposal)) ERR-PROPOSAL-ALREADY-EXECUTED)
-            (ok (map-set proposals
-                {proposal-id: proposal-id}
-                (merge proposal {canceled: true, last-updated: block-height})
-            ))
-        )
-        ERR-PROPOSAL-NOT-FOUND
     )
 )
